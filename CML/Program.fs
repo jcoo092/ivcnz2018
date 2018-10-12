@@ -56,22 +56,35 @@ let takeIntensity pixels neighbourIndex =
         Ch.take pixels.[neighbourIndex].chan
             ^-> (fun i -> Take (i, neighbourIndex))
 
-            
+
 let inline findListMedian l =
     List.sort l
     |> (fun m -> m.[m.Length / 2])
 
-let buildAlts' (pixels: 'a Pix []) pix neighbour =
+let createGive pix =
+    pix.chan *<- Some(pix.intensity)
+                ^->. Give
+
+let createTake pixels neighbour =
+    takeIntensity pixels neighbour
+
+let buildAlts (pixels: 'a Pix []) pix neighbour =
     let give = pix.chan *<- Some(pix.intensity)
                 ^->. Give
     let take = takeIntensity pixels neighbour
     [give; take]
 
+let buildAlts' (pixels: 'a Pix []) pix neighbours =
+   let give = pix.chan *<- Some(pix.intensity)
+               ^->. Give
+   let takes = List.map (takeIntensity pixels) neighbours
+   (give, takes)
+
 let makeRgb24 intensity = Rgb24(intensity, intensity, intensity)
 
-let runPixel coordFinder indexFinder pixels barrier windowSize (outputArray: Rgb24 []) pix =
+(* let runPixel coordFinder indexFinder pixels barrier windowSize (outputArray: Rgb24 []) pix =
     let neighboursIndexList = makeNeighboursIndexList' pix coordFinder indexFinder windowSize
-    let ba = buildAlts' pixels pix
+    let ba = buildAlts pixels pix
     let alts = ba (List.head neighboursIndexList)
     job {
         do! Job.iterateServer ((List.tail neighboursIndexList), pix, alts) <| fun (neighbours, p, alts) ->
@@ -87,7 +100,31 @@ let runPixel coordFinder indexFinder pixels barrier windowSize (outputArray: Rgb
                                                         else
                                                             let newAlts = ba (List.head neighbours)
                                                             ((List.tail neighbours), {p with neighbours = n :: p.neighbours}, newAlts)
-                                                        
+
+                )
+        return pix
+    } *)
+
+let runPixel coordFinder indexFinder pixels barrier windowSize (outputArray: Rgb24 []) pix =
+    let neighboursIndexList = makeNeighboursIndexList' pix coordFinder indexFinder windowSize
+    let ba = buildAlts' pixels pix
+    let (give, takes) = ba neighboursIndexList
+    //let alts = [give; (List.head takes)]
+    job {
+        do! Job.iterateServer ((List.tail neighboursIndexList), pix, give, takes) <| fun (neighbours, p, give, takes) ->
+                Alt.choose [give; (List.head takes)] |> Alt.afterFun (fun x ->
+                                                    match x with
+                                                    | Give -> (neighbours, p, give, takes)
+                                                    | Take(n,i) ->
+                                                        if List.isEmpty neighbours then
+                                                            let median = List.choose id p.neighbours |> findListMedian
+                                                            outputArray.[p.index] <- median |> makeRgb24
+                                                            Latch.decrement barrier |> run
+                                                            ([], p, give, List.singleton (Alt.never ()))
+                                                        else
+                                                            //let newAlts = ba (List.head neighbours)
+                                                            ((List.tail neighbours), {p with neighbours = n :: p.neighbours}, give, (List.tail takes))
+
                 )
         return pix
     }
@@ -97,7 +134,7 @@ let storeMedians (arr: Rgb24 []) oachan = job {
     arr.[index] <- makeRgb24 median
 }
 
-let medianFilter intensities width height windowSize = 
+let medianFilter intensities width height windowSize =
     let pixelCount = width * height
     let fc = findCoords width
     let fi = findIndex width
@@ -111,12 +148,12 @@ let medianFilter intensities width height windowSize =
     Image.LoadPixelData(outputArray, width, height)
 
 
-let run input calc = 
+let run input calc =
     let inputList = Seq.toList input
-    let rec subrun inp acc = 
+    let rec subrun inp acc =
         match inp with
         | [] -> (acc, "Done")
-        | (x :: xs) -> 
+        | (x :: xs) ->
             let res = calc x
             match res with
             | Some(y) -> subrun xs (acc + y)
