@@ -19,9 +19,11 @@ type 'a Pix = {
     chan: 'a option Ch
 }
 
+[<Struct>]
 type 'a Choice =
     | Give
-    | Take of ('a option * int)
+    //| Take of ('a option * int)
+    | Take of 'a option
 
 let listDisplacements ws =
     let ub = (ws - 1) / 2
@@ -51,10 +53,12 @@ let makeNeighboursIndexList' pix coordFinder indexFinder windowSize =
 
 let takeIntensity pixels neighbourIndex =
     if neighbourIndex < 0 || neighbourIndex >= (Array.length pixels) then
-        Alt.always (Take(None, neighbourIndex))
+        //Alt.always (Take(None, neighbourIndex))
+        Alt.always (Take(None))
     else
         Ch.take pixels.[neighbourIndex].chan
-            ^-> (fun i -> Take (i, neighbourIndex))
+            //^-> (fun i -> Take (i, neighbourIndex))
+            ^-> (fun i -> Take (i))
 
 
 let inline findListMedian l =
@@ -115,7 +119,8 @@ let runPixel coordFinder indexFinder pixels barrier windowSize (outputArray: Rgb
                 Alt.choose [give; (List.head takes)] |> Alt.afterFun (fun x ->
                                                     match x with
                                                     | Give -> (neighbours, p, give, takes)
-                                                    | Take(n,i) ->
+                                                    //| Take(n,i) ->
+                                                    | Take(n) ->
                                                         if List.isEmpty neighbours then
                                                             let median = List.choose id p.neighbours |> findListMedian
                                                             outputArray.[p.index] <- median |> makeRgb24
@@ -148,19 +153,6 @@ let medianFilter intensities width height windowSize =
     Image.LoadPixelData(outputArray, width, height)
 
 
-let run input calc =
-    let inputList = Seq.toList input
-    let rec subrun inp acc =
-        match inp with
-        | [] -> (acc, "Done")
-        | (x :: xs) ->
-            let res = calc x
-            match res with
-            | Some(y) -> subrun xs (acc + y)
-            | None -> (acc, "Error")
-    subrun inputList 0
-
-
 [<EntryPoint>]
 let main argv =
     let filename = argv.[0]
@@ -185,7 +177,7 @@ let main argv =
 
         let imageWidth = img.Width
         let imageHeight = img.Height
-        let pixelCount = imageWidth * imageHeight
+        //let pixelCount = imageWidth * imageHeight
         let intensities = img.GetPixelSpan().ToArray() |> Array.Parallel.map (fun p -> p.R)
         out_img <- medianFilter intensities img.Width img.Height windowSize
         timer.Stop ()

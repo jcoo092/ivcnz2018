@@ -12,6 +12,7 @@ open SixLabors.ImageSharp.Formats.Png
 
 type Gpx = byte option
 
+[<Struct>]
 type Directions =
     | North
     | South
@@ -27,8 +28,8 @@ let tryGetGpx (pixelSpan: byte[]) width height x y : Gpx=
         None
     else
         Some(pixelSpan.[x + width * y])
-               
-let step magnitude direction = 
+
+let step magnitude direction =
     let onem = 1 * magnitude
     let nonem = -1 * magnitude
     match direction with
@@ -59,7 +60,8 @@ let mergeGpxArraysTuple (a: Gpx [], b: Gpx [], c: Gpx []) =
 let mergeGpxArrays (arr: Gpx [][]) =
     Array.reduce Array.append arr |> Array.choose id |> arrayMedian
 
-let inline createRgb24Pixel r =
+//let inline createRgb24Pixel r =
+let createRgb24Pixel r =
     Rgb24(r, r, r)
 
 let getNeighbours width height windowSize (neighbourhoods: Gpx[][]) i =
@@ -73,7 +75,7 @@ let getNeighbours width height windowSize (neighbourhoods: Gpx[][]) i =
 
     Array.map (fun j -> if j < 0 || j > (width * height) - 1 then nones else neighbourhoods.[j]) ys
 
-let medianFilter intensities width height windowSize = 
+let medianFilter intensities width height windowSize =
     let mv = move intensities width height
 
     let buildNeighbourArray i p =
@@ -82,7 +84,7 @@ let medianFilter intensities width height windowSize =
         let lb = -ub
         for j in lb..(-1) do
             arr.[j + ub] <- mv i West j
-        
+
         arr.[ub] <- Some(p)
 
         for j in 1..ub do
@@ -108,14 +110,19 @@ let main argv =
     img.Mutate(fun x -> x.Grayscale() |> ignore)
 
     let timer = System.Diagnostics.Stopwatch()
+    let mutable out_img = null
 
-    timer.Start()
+    for _ in 1..totalIterations do
 
-    let intensities = img.GetPixelSpan().ToArray() |> Array.map (fun p -> p.R)  // In grayscale all of R, G, and B should be the same, so can just work with R
+        System.GC.Collect()
 
-    let out_img = medianFilter intensities img.Width img.Height windowSize
+        timer.Start()
 
-    timer.Stop()
+        let intensities = img.GetPixelSpan().ToArray() |> Array.map (fun p -> p.R)  // In grayscale all of R, G, and B should be the same, so can just work with R
+
+        out_img <- medianFilter intensities img.Width img.Height windowSize
+
+        timer.Stop()
 
     use out_file = new System.IO.FileStream(@"..\Images\Outputs\braunl_" + System.IO.Path.GetFileNameWithoutExtension(filename) +
                     "_" + string windowSize +  ".png", System.IO.FileMode.OpenOrCreate)
