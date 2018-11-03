@@ -19,7 +19,7 @@ type 'a Pix = {
     chan: 'a option Ch
 }
 
-[<Struct>]
+//[<Struct>]
 type 'a Choice =
     | Give
     //| Take of ('a option * int)
